@@ -30,35 +30,62 @@ def getPageData(url):
     else:
         title = TITLE_PATTERN.search(html)
         h1 = H1_PATTERN.search(html)
-        data['title'] = title[1] if title else ''
-        data['h1'] = h1[1] if h1 else ''
+        data['title'] = title[1].strip() if title else ''
+        data['h1'] = h1[1].strip() if h1 else ''
 
     return data
 
 
-def compare_urls(data, other_url):
-    results = []
+def compare_urls(data, other_url, group_paths=None):
+    offset = []
 
     base_url = data[0]['url'].rstrip('/')
 
     path_pattern = re.compile('^{}(/.*)'.format(base_url))
+
+    passed_group_paths = set()
     for obj in data:
         rel_path = path_pattern.search(obj['url'])[1]
+
+        if group_paths:
+            is_passed = False
+            for path in group_paths:
+                if rel_path.startswith(path):
+                    if path in passed_group_paths:
+                        is_passed = True
+                    else:
+                        passed_group_paths.add(path)
+
+                    break
+
+            if is_passed:
+                continue
 
         print('Читаем: {}'.format(rel_path))
         other_data = getPageData(other_url + rel_path)
 
-        total = { 'url': rel_path }
+        total = {}
 
-        if 'error' in other_data:
-            total['error'] = other_data['error']
+        if 'error' not in other_data:
+            title_eq = obj['title'] == other_data['title']
+            h1_eq = obj['h1'] == other_data['h1']
+            if title_eq and h1_eq:
+                continue
+
+            if not title_eq:
+                total['exp_title'] = obj['title']
+                total['act_title'] = other_data['title']
+            if not h1_eq:
+                total['exp_h1'] = obj['h1']
+                total['act_h1'] = other_data['h1']
         else:
-            total['title'] = obj['title'] == other_data['title']
-            total['h1'] = obj['h1'] == other_data['h1']
+            total['error'] = other_data['error']
 
-        results.append(total)
+        total['url'] = rel_path
 
-    return results
+        offset.append(total)
+
+    return offset
 
 
 def parse_excel(path):
@@ -68,10 +95,13 @@ def parse_excel(path):
     sheet = wb.active
 
     for row in range(2, sheet.max_row+1):
+        url = sheet.cell(row=row, column=1).value
+        title = sheet.cell(row=row, column=2).value
+        h1 = sheet.cell(row=row, column=3).value
         result.append({
-            'url': sheet.cell(row=row, column=1).value,
-            'title': sheet.cell(row=row, column=2).value,
-            'h1': sheet.cell(row=row, column=3).value
+            'url': url.strip(),
+            'title': title.strip() if title else '',
+            'h1': h1.strip() if h1 else ''
         })
 
     return result
@@ -82,26 +112,26 @@ def output_excel(data):
     sheet = wb.add_sheet('Sheet 1')
 
     sheet.write(0, 0, 'URL')
-    sheet.write(0, 1, 'TITLE')
-    sheet.write(0, 2, 'H1')
-    sheet.write(0, 3, 'ERROR')
+    sheet.write(0, 1, 'TITLE (Expected)')
+    sheet.write(0, 2, 'TITLE (Actual)')
+    sheet.write(0, 3, 'H1 (Expected)')
+    sheet.write(0, 4, 'H1 (Actual)')
+    sheet.write(0, 5, 'ERROR')
 
     line_num = 1
-    for record in data:
-        if 'error' not in record and record['h1'] and record['title']:
-            continue
 
+    fields = dict(zip(range(6), ('url', 'exp_title', 'act_title',
+                                 'exp_h1', 'act_h1', 'error')))
+
+    for record in data:
         row = sheet.row(line_num)
         line_num += 1
 
-        row.write(0, record['url'])
-        if 'error' in record:
-            row.write(3, record['error'])
-        else:
-            row.write(1, '' if record['title'] else 'Не совпадает')
-            row.write(2, '' if record['h1'] else 'Не совпадает')
+        for n, field in fields.items():
+            if field in record:
+                row.write(n, record[field])
 
-    wb.save('output.xls')
+    wb.save('report.xls')
 
 
 if __name__ == '__main__':
@@ -111,14 +141,23 @@ if __name__ == '__main__':
         help='Абсолютный или относительный путь до таблицы с данными')
     parser.add_argument(
         'mirror_path',
-        help='базовый путь, с которым сравниваем урлы из таблицы')
+        help='Базовый путь, с которым сравниваем урлы из таблицы')
+    parser.add_argument(
+        '-g',
+        help=('Урлы, для которых достаточно проверить первую подкатегорию. '
+              'Перечисление урлов необходимо выделять кавычками: "URL1, ..."')
+    )
     args = parser.parse_args()
 
     print('Читаем таблицу...')
     table = parse_excel(args.excel_path)
 
     print('Начинаем чтение url-ов...')
-    offset = compare_urls(table, args.mirror_path)
+    if args.g:
+        paths = args.g.split()
+        result = compare_urls(table, args.mirror_path, paths)
+    else:
+        result = compare_urls(table, args.mirror_path)
 
     print('Сохраняем результат...')
-    output_excel(offset)
+    output_excel(result)
