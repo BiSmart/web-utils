@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import re
 import argparse
 
@@ -12,7 +13,7 @@ import urllib.error
 
 
 TITLE_PATTERN = re.compile('<title.*?>(.*?)</title>')
-H1_PATTERN = re.compile('<h1.*?>(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?</h1>')
+H1_PATTERN = re.compile('<h1.*?>(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?</h1>', re.DOTALL)
 
 
 def getPageData(url):
@@ -30,8 +31,9 @@ def getPageData(url):
     else:
         title = TITLE_PATTERN.search(html)
         h1 = H1_PATTERN.search(html)
-        data['title'] = title[1].strip() if title else ''
-        data['h1'] = h1[1].strip() if h1 else ''
+
+        data['title'] = title[1].strip(' \r\t\n') if title else ''
+        data['h1'] = h1[1].strip(' \r\t\n') if h1 else ''
 
     return data
 
