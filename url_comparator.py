@@ -12,7 +12,8 @@ import urllib.error
 
 
 TITLE_PATTERN = re.compile('<title.*?>(.*?)</title>')
-H1_PATTERN = re.compile('<h1.*?>(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?</h1>', re.DOTALL)
+H1_PATTERN = re.compile('<h1.*?>\s*(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?\s*</h1>', re.DOTALL)
+QUOTES_PATTERN = re.compile('[{}{}]'.format(chr(171), chr(187)))
 
 
 def getPageData(url):
@@ -29,10 +30,17 @@ def getPageData(url):
         data['error'] = 'unknown error'
     else:
         title = TITLE_PATTERN.search(html)
-        h1 = H1_PATTERN.search(html)
+        h1 = H1_PATTERN.findall(html)
 
-        data['title'] = title[1].strip(' \r\t\n') if title else ''
-        data['h1'] = h1[1].strip(' \r\t\n') if h1 else ''
+        print('H1\'s count: {}\n'.format(len(h1)))
+
+        data['title'] = ''
+        data['h1'] = ''
+        if title:
+            f_title = QUOTES_PATTERN.sub('"', title[1])
+            data['title'] = f_title.strip(' \r\t\n')
+        if h1:
+            data['h1'] = h1[0].strip(' \r\t\n')
 
     return data
 
