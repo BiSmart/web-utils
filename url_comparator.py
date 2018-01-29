@@ -12,7 +12,8 @@ import urllib.error
 
 
 TITLE_PATTERN = re.compile('<title.*?>(.*?)</title>')
-H1_PATTERN = re.compile('<h1.*?>(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?</h1>', re.DOTALL)
+H1_PATTERN = re.compile('<h1.*?>\s*(?:<[A-Za-z]+?(?:\s.*?)?>)*(.*?)(?:</.+?>)*?\s*</h1>', re.DOTALL)
+QUOTES_PATTERN = re.compile('[{}{}]'.format(chr(171), chr(187)))
 
 
 def getPageData(url):
@@ -29,10 +30,15 @@ def getPageData(url):
         data['error'] = 'unknown error'
     else:
         title = TITLE_PATTERN.search(html)
-        h1 = H1_PATTERN.search(html)
+        h1 = H1_PATTERN.findall(html)
 
-        data['title'] = title[1].strip(' \r\t\n') if title else ''
-        data['h1'] = h1[1].strip(' \r\t\n') if h1 else ''
+        data['title'] = ''
+        data['h1'] = ''
+
+        if title:
+            data['title'] = QUOTES_PATTERN.sub('"', title[1].strip(' \r\t\n'))
+        if h1:
+            data['h1'] = QUOTES_PATTERN.sub('"', h1[0].strip(' \r\t\n'))
 
     return data
 
@@ -45,7 +51,9 @@ def compare_urls(data, other_url, group_paths=None):
     path_pattern = re.compile('^{}(/.*)'.format(base_url))
 
     passed_group_paths = set()
+    passed = -1
     for obj in data:
+        passed += 1
         rel_path = path_pattern.search(obj['url'])[1]
 
         if group_paths:
@@ -62,7 +70,8 @@ def compare_urls(data, other_url, group_paths=None):
             if is_passed:
                 continue
 
-        print('Читаем: {}'.format(rel_path))
+        print('{} / {} passed'.format(passed, len(data)))
+        print('\nЧитаем: {}'.format(rel_path))
         other_data = getPageData(other_url + rel_path)
 
         total = {}
@@ -74,9 +83,11 @@ def compare_urls(data, other_url, group_paths=None):
                 continue
 
             if not title_eq:
+                print('Title problem')
                 total['exp_title'] = obj['title']
                 total['act_title'] = other_data['title']
             if not h1_eq:
+                print('H1 problem')
                 total['exp_h1'] = obj['h1']
                 total['act_h1'] = other_data['h1']
         else:
@@ -99,10 +110,15 @@ def parse_excel(path):
         url = sheet.cell(row=row, column=1).value
         title = sheet.cell(row=row, column=2).value
         h1 = sheet.cell(row=row, column=3).value
+
+        f_title = ''
+        if title:
+            f_title = QUOTES_PATTERN.sub('"', title.strip().replace(chr(160),
+                                                                    ' '))
         result.append({
             'url': url.strip(),
-            'title': title.strip() if title else '',
-            'h1': h1.strip() if h1 else ''
+            'title': f_title,
+            'h1': QUOTES_PATTERN.sub('"', h1.strip()) if h1 else ''
         })
 
     return result
